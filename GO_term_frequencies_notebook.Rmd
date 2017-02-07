@@ -1,0 +1,61 @@
+---
+title: "Calculating overrepresented GO terms on chrXX of Forc016_v0.02"
+output: html_notebook
+---
+
+The goal of this analysis is to find overrepresented GO terms on Forc016's pathogenicity chromosome compared to the rest of the genome.
+
+##Reading in the data from a textfile containing frequencies
+```{r}
+filepath<-"/Users/Peter/Documents/_Projects/20.Forc016_pacbio/03.annotation_interproscan/02.Forc016_v0.02/Forc016_v0.02_output_functional/GO_term_frequencies.txt"
+mydata=read.table(filepath, sep="\t", header=TRUE)
+```
+
+##Calculating the probably with a hypergeometric test
+Funtion to be used (recommended by Marc G):
+
+**phyper(q, m, n, k, lower.tail = TRUE, log.p = FALSE)**  
+   x, q vector of quantiles representing the number of white balls drawn without replacement from an urn which contains both black and white balls.  
+   m the number of white balls in the urn.  
+   n the number of black balls in the urn.  
+   k the number of balls drawn from the urn.  
+
+in the case of the first line in the data:  
+
+| GO_term        | genomefreq           | chrXXfreq  |
+| ------------- |:-------------:| :-----:|
+| GO:0006468      | 210 | 8 |
+
+   q (occurrences of this GO term on the chromosome of interest) = 8  
+   m (total # of occurrences of this GO term in the genome) = 210  
+   n (total # of occurrences of other GO terms in the genome) = 26005*-210  
+   k (total # of GO terms annotated on the chromosome of interest) = 610  
+
+   \* 26005 GO terms were annotated on the predicted genes in this genome)  
+   
+```{r}
+phyper_result_example = phyper(q=8,m=210,n=26005-210,k=610)
+```
+The result of this analysis is `0.9396704`, which is not significant using a p-value-cutoff of 0.05.
+
+Now we will execute this on the whole dataset:
+```{r}
+sum_GO_terms_genome = sum(mydata$genomefreq)
+sum_GO_terms_chrXX = sum(mydata$chrXXfreq)
+phyper_result = phyper(q=mydata$chrXXfreq,m=mydata$genomefreq,n=sum_GO_terms_genome-mydata$chrXXfreq,k=sum_GO_terms_chrXX)
+
+#adjust the data using p.adjust with the strict bonferroni method:
+phyper_result_adjusted = p.adjust(phyper_result, method = "bonferroni", n = length(phyper_result))
+
+#add the phyper test results to our dataframe:
+mydata <- cbind(mydata, phyper_result, phyper_result_adjusted)
+mydata_reordered <- mydata[,c(1,4,5,2,3)]
+#write mydata to a tab-delimited txt file:
+filepath_output<-"/Users/Peter/Documents/_Projects/20.Forc016_pacbio/03.annotation_interproscan/02.Forc016_v0.02/Forc016_v0.02_output_functional/GO_term_frequencies_phyper.txt"
+
+write.table(mydata_reordered,file=filepath_output,sep = "\t",eol = "\n", na = "NA", dec = ",", quote=FALSE,row.names = FALSE,col.names = TRUE)
+```
+
+Next, the data can be opened in Excel for further downstream analysis (e.g. selecting the rows that are above the 95% confidence interval and having >1 occurrence on chrXX). I used http://revigo.irb.hr/ for visualizing the GO terms.
+
+
